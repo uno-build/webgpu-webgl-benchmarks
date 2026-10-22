@@ -45,6 +45,8 @@ const { values: args } = parseArgs({
     resume: { type: 'string' },
     profile: { type: 'string', default: 'quick' },
     only: { type: 'string' },
+    /** Representative loads for a shorter, comparable pass across all scenarios. */
+    representative: { type: 'boolean', default: false },
     repeats: { type: 'string' },
     port: { type: 'string', default: '5173' },
     'no-build': { type: 'boolean', default: false },
@@ -143,6 +145,12 @@ const PORT = Number(args.port);
 const origin = `http://localhost:${PORT}`;
 
 function launch(browser: string, url: string): Browser {
+  // Open this URL in an externally managed browser (e.g. the app's Chromium tab).
+  // The caller owns that tab's lifecycle; the runner still owns the queue and watchdog.
+  if (browser === 'manual') {
+    console.log(`OPEN_BROWSER ${url}`);
+    return { async kill() {} };
+  }
   const tmp = mkdtempSync(join(tmpdir(), `wgb-${browser}-`));
   let child: ChildProcess | null = null;
   switch (browser) {
@@ -224,10 +232,14 @@ function newSession(browser: string, profileName: string) {
   const id = `${stamp}-${browser}-${profileName}${PORT === 5173 ? '' : `-p${PORT}`}${args.opt ? `-${args.opt}` : ''}`;
   const dir = join(ROOT, 'results', id);
   mkdirSync(dir, { recursive: true });
-  const cells = allCells(parseOnly(args.only));
+  const representative: Record<string, number[]> = {
+    s0: [1], s1: [1000, 5000], s2: [100], s3: [100000], s4: [32],
+    s5: [2000], s6: [2000], s7: [1], s8: [50], s8b: [50], s9: [1000000],
+  };
+  const cells = allCells(parseOnly(args.only)).filter((c) => !args.representative || representative[c.scenario].includes(c.level));
   const queue = buildQueue(id, profile, cells, gpuTimingFor(browser));
   const session = new BenchSession(id, browser, dir, queue, (m) => console.log(`[${browser}] ${m}`));
-  writeFileSync(join(dir, 'session.json'), JSON.stringify({ id, browser, profile: profileName, only: args.only ?? null, cells: cells.length, runs: queue.length, startedAt: new Date().toISOString() }, null, 2));
+  writeFileSync(join(dir, 'session.json'), JSON.stringify({ id, browser, profile: profileName, only: args.only ?? null, representative: args.representative, cells: cells.length, runs: queue.length, startedAt: new Date().toISOString() }, null, 2));
   // Timeout/watchdog records only carry a runId; the queue maps it back to a cell.
   writeFileSync(join(dir, 'queue.json'), JSON.stringify(queue, null, 1));
   console.log(`session ${id}: ${cells.length} cells, ${queue.length} runs → results/${id}`);

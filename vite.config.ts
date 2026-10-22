@@ -1,6 +1,7 @@
 import { defineConfig } from 'vite';
 import { resolve } from 'node:path';
 import { benchApi } from './server/api.ts';
+import { liteCompatibility } from './server/lite-compat.ts';
 
 const root = import.meta.dirname;
 
@@ -11,7 +12,7 @@ const headers = {
 };
 
 export default defineConfig({
-  plugins: [benchApi(root)],
+  plugins: [benchApi(root), liteCompatibility()],
   build: {
     target: 'es2022',
     outDir: 'dist',

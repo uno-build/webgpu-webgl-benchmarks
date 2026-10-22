@@ -140,11 +140,14 @@ for (const s of sessions) {
 const errText = (r: any) => String(r.error ?? r.status).split('\n')[0].slice(0, 300);
 const out: any[] = [];
 for (const c of cells.values()) {
-  const t = c.timing.length ? c.timing : c.counters ? [c.counters] : [];
+  // Invalid GPU frames cannot contribute to a successful run's medians.
+  const validTiming = c.timing.filter((r) => r.status === 'ok');
+  const validCounters = c.counters?.status === 'ok' ? c.counters : null;
+  const t = validTiming.length ? validTiming : validCounters ? [validCounters] : [];
   const pick = (path: string) => stat(t.map((r) => get(r, path)));
   const na = c.failures.find((r) => /^N\/A:/.test(String(r.error ?? '')));
   const status = c.timing.some((r) => r.status === 'ok') ? 'ok' : c.timing.length ? 'invalid' : na ? 'na' : c.failures.length ? 'error' : c.skipped ? 'skipped' : c.counters ? 'ok' : 'missing';
-  const ref = c.counters ?? c.timing[0];
+  const ref = validCounters ?? validTiming[0];
   // GPU busy time ≤ min(span, sum): the span counts idle gaps between an engine's submits,
   // the sum double-counts passes that overlap on a tile-based GPU.
   const busy = (r: any, q: 'p50' | 'p95') => {
@@ -159,7 +162,8 @@ for (const c of cells.values()) {
     variant: c.variant,
     level: c.level,
     status,
-    repeats: c.timing.length,
+    repeats: validTiming.length,
+    attemptedRepeats: c.timing.length,
     error: status === 'ok' ? (c.failures[0] ? errText(c.failures[0]) : null) : c.failures[0] ? errText(c.failures[0]) : null,
     interval: { p50: pick('frames.interval.p50'), p95: pick('frames.interval.p95') },
     cpu: { p50: pick('frames.cpu.p50'), p95: pick('frames.cpu.p95') },
@@ -173,7 +177,10 @@ for (const c of cells.values()) {
     },
     sim: pick('frames.sim.p50'),
     stutter: pick('frames.stutter'),
-    frameCost: stat(t.map((r) => Math.max(get(r, 'frames.cpu.p95') ?? 0, busy(r, 'p95') ?? 0))),
+    frameCost: stat(t.map((r) => {
+      const cpu = get(r, 'frames.cpu.p95'), gpu = busy(r, 'p95');
+      return cpu == null || gpu == null ? null : Math.max(cpu, gpu);
+    })),
     timings: {
       ttff: pick('timings.ttffMs'),
       import: pick('timings.importMs'),
@@ -185,9 +192,9 @@ for (const c of cells.values()) {
     },
     jsHeap: pick('memory.jsHeapUsed'),
     pipelinesDuringMeasure: pick('pipelinesDuringMeasure'),
-    counters: c.counters?.counters ?? null,
-    gpuMem: c.counters?.probe?.mem ?? ref?.probe?.mem ?? null,
-    gpuTotals: c.counters?.probe?.totals ?? ref?.probe?.totals ?? null,
+    counters: validCounters?.counters ?? null,
+    gpuMem: validCounters?.probe?.mem ?? ref?.probe?.mem ?? null,
+    gpuTotals: validCounters?.probe?.totals ?? ref?.probe?.totals ?? null,
     canvas: ref?.probe?.canvas ?? null,
     msaa: ref?.engine?.init?.msaa ?? null,
     path: ref?.engine?.load?.path ?? null,

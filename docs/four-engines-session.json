@@ -1,0 +1,22 @@
+{
+  "id": "2026-10-22T09-36-43-manual-full-p5187",
+  "browser": "manual",
+  "profile": "full",
+  "only": "engine=three,playcanvas,babylon,babylon-lite;backend=webgpu",
+  "representative": true,
+  "cells": 64,
+  "runs": 273,
+  "startedAt": "2026-10-22T09:36:43.171Z",
+  "environment": {
+    "cpu": "Apple M4 Pro",
+    "memoryGiB": 24,
+    "os": "26.6.2",
+    "power": "AC power, battery fully charged at start",
+    "browser": "Chrome for Testing 153.0.8010.12, headless Playwright, Dawn/Metal, default Playwright launch flags, display-rate limited",
+    "resolution": [
+      1920,
+      1080
+    ],
+    "msaa": 4
+  }
+}

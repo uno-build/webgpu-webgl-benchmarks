@@ -16,7 +16,7 @@ export interface ScenarioDef {
   maxLevel?: Partial<Record<Variant, number>>;
 }
 
-const MAIN: EngineId[] = ['three', 'playcanvas', 'babylon'];
+const MAIN: EngineId[] = ['three', 'playcanvas', 'babylon', 'babylon-lite'];
 const WITH_CLASSIC: EngineId[] = [...MAIN, 'three-classic'];
 const BOTH: Backend[] = ['webgpu', 'webgl2'];
 
@@ -38,8 +38,9 @@ export const SCENARIOS: ScenarioDef[] = [
 
 export const scenarioById = (id: string) => SCENARIOS.find((s) => s.id === id);
 
-/** three-classic is the classic WebGLRenderer: it only exists on the WebGL2 backend. */
+/** Backend-only engines must never silently fall back to another renderer. */
 export function engineSupports(engine: EngineId, backend: Backend) {
+  if (engine === 'babylon-lite') return backend === 'webgpu';
   return engine === 'three-classic' ? backend === 'webgl2' : true;
 }
 

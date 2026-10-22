@@ -5,10 +5,11 @@ import { build } from 'vite';
 import { gzipSync, brotliCompressSync, constants } from 'node:zlib';
 import { readFileSync, readdirSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { join, relative } from 'node:path';
+import { liteCompatibility } from '../server/lite-compat';
 
 const ROOT = join(import.meta.dirname, '..');
 const OUT = join(ROOT, 'dist-size');
-const ENGINES = ['three', 'playcanvas', 'babylon', 'three-classic'];
+const ENGINES = ['three', 'playcanvas', 'babylon', 'babylon-lite', 'three-classic'];
 
 interface Size { raw: number; gzip: number; brotli: number; files: number }
 type Manifest = Record<string, { file: string; isEntry?: boolean; isDynamicEntry?: boolean; imports?: string[]; dynamicImports?: string[]; src?: string }>;
@@ -22,7 +23,7 @@ function add(s: Size, file: string) {
   s.files++;
 }
 
-/** Entry chunk + transitive static imports (what must download before first frame), and everything reachable. */
+/** Static entry graph and all reachable chunks. Some dynamic imports also run before the first frame. */
 function measure(dir: string, manifest: Manifest, entryKey: string, exclude = new Set<string>()) {
   const initial = empty(), lazy = empty();
   const seenStatic = new Set<string>(), seenAll = new Set<string>();
@@ -52,6 +53,7 @@ async function buildEntry(name: string, input: string) {
   await build({
     root: ROOT,
     configFile: false,
+    plugins: [liteCompatibility()],
     logLevel: 'warn',
     build: { outDir, emptyOutDir: true, target: 'es2022', manifest: true, modulePreload: false, assetsDir: '.', rolldownOptions: { input } },
   });

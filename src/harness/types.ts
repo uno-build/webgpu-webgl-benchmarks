@@ -1,4 +1,4 @@
-export type EngineId = 'three' | 'playcanvas' | 'babylon' | 'three-classic';
+export type EngineId = 'three' | 'playcanvas' | 'babylon' | 'babylon-lite' | 'three-classic';
 export type Backend = 'webgpu' | 'webgl2';
 export type Variant = 'naive' | 'optimized';
 export type Mode = 'timing' | 'counters';

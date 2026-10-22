@@ -1,10 +1,22 @@
 # webgpu-webgl-benchmarks
 
-A reproducible benchmark of **three.js**, **PlayCanvas** and **Babylon.js** on WebGPU and WebGL2, across Chrome, Safari and Firefox.
+A reproducible benchmark of **three.js**, **PlayCanvas** and **Babylon.js** on WebGPU and WebGL2, plus **Babylon Lite** on WebGPU, across Chrome, Safari and Firefox.
 
 **Full interactive report:** https://endel.github.io/webgpu-webgl-benchmarks/ (also on [Claude](https://claude.ai/code/artifact/b2f3c482-3d9d-481e-ab0a-0d97620c09a2)). The page is a static copy of the generated report, in `docs/index.html`.
 
+**Fresh four-engine comparison:** [docs/index-four-engines.html](docs/index-four-engines.html). A separate representative WebGPU session on Apple M4 Pro / 24 GB / macOS 26.6.2, using headless Chrome for Testing 153.0.8010.12 on Apple/Metal. All 16 Babylon Lite combinations are valid, with no Lite N/A cells. Across the four engines, 61 of 64 combinations are valid, with three timing repeats, separate counters and captures, explicit N/A/error cells, and a raw-data download. It does not mix measurements from the original reference machine. The browser is display-rate limited, so compare CPU/GPU cost rather than FPS.
+
+To reproduce this report's selection and export a completed session:
+
+```sh
+node --import tsx scripts/run.ts --browser manual --profile full --representative --only 'engine=three,playcanvas,babylon,babylon-lite;backend=webgpu' --port 5187 --restart-every 0
+# Open the printed OPEN_BROWSER URL; record machine/browser details in the session's environment.json.
+node --import tsx scripts/report-four-engines.ts <session-folder>
+```
+
 ## Results
+
+The published results below predate the Babylon Lite adapter. They do not include measurements of Lite.
 
 three.js r186, PlayCanvas 2.22.2 and Babylon.js 9.26.0 were measured in Chrome 151, Firefox 150 and Safari 26.6 on an Apple M1 Pro (macOS 26.6), about 2,200 runs in all. Numbers are Chrome on WebGPU unless noted.
 
@@ -54,6 +66,39 @@ npm run report                                          # report/out/index.html
 
 `npm run dev` serves `index.html`, which links every scenario in *standalone* mode: the scene renders continuously with a live HUD and nothing is recorded.
 
+### Babylon Lite
+
+The separate `babylon-lite` adapter pins the official [`@babylonjs/lite`](https://github.com/BabylonJS/Babylon-Lite) package to **1.36.0**. It uses Lite's native engine, scene, PBR, glTF loader, thin instances and clustered lights. It does not wrap Babylon.js. Lite is WebGPU-only; the runner and landing page exclude its WebGL2 combinations.
+
+```sh
+npm run bench -- --browser chrome --profile smoke --only "engine=babylon-lite;backend=webgpu"
+npm run bench -- --browser chrome --profile full --only "engine=babylon-lite;backend=webgpu"
+npm run bundle-size
+# Partial sessions must be selected explicitly (use the folder printed by the runner):
+npm run report -- --sessions <session-folder>
+```
+
+| Scenario | Lite adapter coverage |
+|---|---|
+| S0 / S1 / S2 | Native mesh clones sharing geometry; S1 optimized groups thin instances by geometry/material |
+| S3 | Thin instances; uploads the shared matrices every frame |
+| S4 optimized | Native clustered point lights, including the reference range-windowed attenuation |
+| S7 | Native glTF loader and the same scripted camera |
+| S4 naive | Native forward point lights; inverse-square falloff differs from the clustered/glTF range window |
+| S5 / S6 | Four CSM cascades + four PCF spot maps; S6 uses linear HDR with 4× MSAA, native bloom, then ACES |
+| S8 / S8b | Independent native skeleton controllers with shared geometry/materials; S8 optimized uses native VAT and per-instance phases |
+| S9 | Shared reference compute integration, storage buffers, one instanced billboard draw and hardware MSAA resolve |
+
+All registered WebGPU scenarios now have Lite implementations. Native forward lights use inverse-square attenuation without the glTF smooth range window, and spotlights have no separate inner-angle/penumbra control. Those native shading differences are recorded in the run notes; they are not claimed to be pixel-identical lighting comparisons. The procedural scene is reflected into Lite's left-handed world, with corrected winding, reflected camera/lights and unchanged instance matrix uploads. The glTF loader's X reflection is normalized to that same Z reflection, preserving authored child transforms and character placement. The harness owns the only animation loop.
+
+Lite 1.36.0 drops PCF receivers when a material also receives CSM, while still binding their textures. `server/lite-compat.ts` fixes that composition at build time by merging Lite's native fragments in light order. Both regular builds and bundle measurements apply the same fix; no files under `node_modules` are modified. Regression checks: `node --import tsx --test tests/babylon-lite.test.ts`.
+
+Character clones share the template geometry/materials. Texture-free native GLB loads supply independent skeletons/controllers; their temporary geometry and unused textures are retired before rendering. The optimized path bakes the native bone textures once and supplies every instance's phase explicitly. Compute particles share the exact WGSL integration with the Babylon.js adapter.
+
+Bundle measurements include a separate minimal lit-cube app. `initial` means the static import graph; `total` also includes reachable dynamic imports. Lite loads rendering features lazily, including during scene registration, so `initial` alone is **not** the number of bytes needed for the first frame.
+
+Integration validation (2026-10-22): production builds in Chrome for Testing 153 on Apple/Metal, 1920×1080 and MSAA 4×. All 16 representative Lite combinations passed: 48 timing runs of 240 measured frames each, 100% GPU-sample coverage, no GPU errors and no pipelines compiled during measurement. This includes 32 forward/clustered lights, shadows/bloom with 2,000 objects, 50 Foxes with independent skinning or phased VAT, 50 BrainStems and one million compute particles. Separate counters and frame-60 captures accompany each combination. Native light capacity stays at its default 16 except where the scene requires more forward lights, configured before scene creation. The report uses only the completed session `2026-10-22T09-36-43-manual-full-p5187`; earlier smoke tests and an abandoned configuration are excluded. Firefox, Safari and upper ladder levels still need benchmark sessions.
+
 ### Runner options
 
 | Flag | Meaning |
@@ -64,10 +109,12 @@ npm run report                                          # report/out/index.html
 | `--opt <name>` | Force a named optimized-path candidate on optimized runs |
 | `--repeats N` | Override the profile's repeat count |
 | `--port N` | Serve on another port. Each port builds into its own `dist-N`, so runners can run side by side |
+| `--representative` | Run S1 at 1k/5k meshes and one representative load per other scenario, retaining all rendering paths |
 | `--no-gpu-timing` | Skip timestamp-query injection |
 | `--no-build` | Reuse the last build |
 
 **Browser setup.**
+- **Manual** (`--browser manual`) prints an `OPEN_BROWSER` URL for an externally managed browser. The runner still controls the queue; open each printed URL when a restart is requested, and close your tab afterwards. Use `--restart-every 0` to keep a single tab for the session. Record browser flags and display-rate limits when comparing results.
 - **Chrome** runs from its installed binary with a throwaway profile, with vsync and the frame-rate limit disabled and unquantized WebGPU timestamps enabled.
 - **Firefox** runs with a throwaway profile set to `layout.frame_rate=0` and full-resolution timers.
 - **Safari** is opened with `open -a Safari`. Keep its window frontmost and dismiss any first-run or automation prompts before a session.
