@@ -1,22 +1,22 @@
 # webgpu-webgl-benchmarks
 
-A reproducible benchmark of **three.js**, **PlayCanvas** and **Babylon.js** on WebGPU and WebGL2, plus **Babylon Lite** on WebGPU, across Chrome, Safari and Firefox.
+A reproducible benchmark of **three.js**, **PlayCanvas**, **Babylon.js** and **PixiJS 3D** on WebGPU and WebGL2, plus **Babylon Lite** on WebGPU, across Chrome, Safari and Firefox.
 
-**Full interactive report:** https://endel.github.io/webgpu-webgl-benchmarks/ (also on [Claude](https://claude.ai/code/artifact/b2f3c482-3d9d-481e-ab0a-0d97620c09a2)). The page is a static copy of the generated report, in `docs/index.html`.
+**Full interactive report:** https://endel.github.io/webgpu-webgl-benchmarks/. The current five-engine comparison is published from `docs/index.html`.
 
-**Fresh four-engine comparison:** [docs/index-four-engines.html](docs/index-four-engines.html). A separate representative WebGPU session on Apple M4 Pro / 24 GB / macOS 26.6.2, using headless Chrome for Testing 153.0.8010.12 on Apple/Metal. All 16 Babylon Lite combinations are valid, with no Lite N/A cells. Across the four engines, 61 of 64 combinations are valid, with three timing repeats, separate counters and captures, explicit N/A/error cells, and a raw-data download. It does not mix measurements from the original reference machine. The browser is display-rate limited, so compare CPU/GPU cost rather than FPS.
+**Fresh five-engine comparison:** [docs/index.html](docs/index.html). A new representative WebGPU session on Apple M4 Pro / 24 GB / macOS 26.6.2, using the in-app Chromium 157 on Apple/Metal. All five engines were remeasured in the same session: 72 of 80 combinations are valid, seven are N/A and one fails. PixiJS 3D has 11 valid combinations and five explicit N/A paths; Babylon Lite has all 16 valid. Every valid combination has three timing repeats and separate counters/captures, with 100% GPU-sample coverage and no GPU validation errors or pipelines compiled during measurement. The report embeds 62 representative images and offers the raw runs for download. No older Chrome 153 or original-reference measurements are mixed in. The browser is display-rate limited, so compare CPU/GPU cost rather than FPS.
 
 To reproduce this report's selection and export a completed session:
 
 ```sh
-node --import tsx scripts/run.ts --browser manual --profile full --representative --only 'engine=three,playcanvas,babylon,babylon-lite;backend=webgpu' --port 5187 --restart-every 0
+node --import tsx scripts/run.ts --browser manual --profile full --representative --only 'engine=three,playcanvas,babylon,babylon-lite,pixi3d;backend=webgpu' --port 5191 --restart-every 0
 # Open the printed OPEN_BROWSER URL; record machine/browser details in the session's environment.json.
 node --import tsx scripts/report-four-engines.ts <session-folder>
 ```
 
 ## Results
 
-The published results below predate the Babylon Lite adapter. They do not include measurements of Lite.
+The published results below predate the Babylon Lite and PixiJS 3D adapters. They do not include measurements of either.
 
 three.js r186, PlayCanvas 2.22.2 and Babylon.js 9.26.0 were measured in Chrome 151, Firefox 150 and Safari 26.6 on an Apple M1 Pro (macOS 26.6), about 2,200 runs in all. Numbers are Chrome on WebGPU unless noted.
 
@@ -98,6 +98,34 @@ Character clones share the template geometry/materials. Texture-free native GLB 
 Bundle measurements include a separate minimal lit-cube app. `initial` means the static import graph; `total` also includes reachable dynamic imports. Lite loads rendering features lazily, including during scene registration, so `initial` alone is **not** the number of bytes needed for the first frame.
 
 Integration validation (2026-10-22): production builds in Chrome for Testing 153 on Apple/Metal, 1920×1080 and MSAA 4×. All 16 representative Lite combinations passed: 48 timing runs of 240 measured frames each, 100% GPU-sample coverage, no GPU errors and no pipelines compiled during measurement. This includes 32 forward/clustered lights, shadows/bloom with 2,000 objects, 50 Foxes with independent skinning or phased VAT, 50 BrainStems and one million compute particles. Separate counters and frame-60 captures accompany each combination. Native light capacity stays at its default 16 except where the scene requires more forward lights, configured before scene creation. The report uses only the completed session `2026-10-22T09-36-43-manual-full-p5187`; earlier smoke tests and an abandoned configuration are excluded. Firefox, Safari and upper ladder levels still need benchmark sessions.
+
+### PixiJS 3D
+
+The `pixi3d` adapter uses the public npm release **`@pixi/3d` 0.1.0** with **`pixi.js` 8.23.0**, on WebGPU and WebGL2, following the [installation guide](https://pixijs.com/3d/guides/getting-started/installation) and the [current agent guide](https://github.com/pixijs/3d/tree/main/skills/pixijs-3d). Both versions are pinned in `package.json` and resolved from npm in the lockfile. This is the PixiJS team's 3D extension, distinct from the older `pixi3d` package.
+
+```sh
+npm run bench -- --browser chrome --profile smoke --representative --only "engine=pixi3d"
+npm run bench -- --browser chrome --profile full --only "engine=pixi3d"
+npm run bundle-size
+npm run report -- --sessions <session-folder>
+node --import tsx --test tests/pixi3d.test.ts
+```
+
+| Scenario | PixiJS 3D adapter coverage |
+|---|---|
+| S0 / S1 naive / S2 | Native `Mesh3D` nodes sharing geometry/materials; retains the engine's automatic batching |
+| S1 optimized | Native `BatchedMesh3D`, updating the shared scene's transforms in bulk |
+| S3 | Native `BatchedMesh3D`, uploading every reference matrix on every frame |
+| S4 optimized, 8 / 32 lights | Native tiled lighting: 16×9 screen tiles and 32 depth bins |
+| S4 naive / optimized above 32 lights | N/A: no untiled forward path; non-ambient lights are capped at 32 |
+| S5 / S6 | N/A: one shadow-map resolution per view; reference requires 2048px CSM maps and 1024px spot maps |
+| S7 | Native glTF loader and `Model3D`, with the shared scripted camera |
+| S8 naive / S8b | Independent native skeletons and animation states; shared model resources and deterministic per-character phases |
+| S8 optimized / S9 | N/A: no adapter path for phased baked animation or the reference compute particle simulation |
+
+The harness owns rendering; the application ticker and automatic animation playback are disabled. Linear scene colors are converted to the API's sRGB inputs, and procedural lights are scaled by π to account for native Lambert normalization. Missing glTF normals (including Fox) are generated as flat face normals once on the shared source, preserving UVs, skin weights and joint indices. Unsupported workloads throw explicit `N/A:` errors before scene allocation, so light or shadow limits never silently reduce a workload. The landing page, run queue, generated report and bundle-size comparison include PixiJS 3D. Published historical reports are unchanged.
+
+Validation (2026-11-13): TypeScript, production builds and regression checks pass. Completed session `2026-11-13T10-10-27-manual-full-p5191` measured all five engines in Chromium 157 on the Apple M4 Pro. PixiJS 3D has 33 valid timing runs over 11 combinations, 11 separate counters runs and frame-60 captures, 100% GPU-sample coverage, no GPU validation errors and no pipelines compiled during measurement. Five unsupported paths are explicitly N/A. The [comparison](docs/index.html) includes its measured CPU/GPU times, draw/upload counters, startup, bundle footprint and representative captures. Larger loads, Firefox, Safari and WebGL2 still require benchmark sessions.
 
 ### Runner options
 

@@ -19,6 +19,7 @@
     --e-playcanvas: #eb6834;
     --e-babylon: #1baf7a;
     --e-babylon-lite: #c084fc;
+    --e-pixi3d: #db2777;
     --e-three-classic: #8d938e;
     --critical: #d03b3b;
     --good-ink: #006300;
@@ -275,9 +276,10 @@ const ENG = {
   playcanvas: { label: 'PlayCanvas', color: 'var(--e-playcanvas)' },
   babylon: { label: 'Babylon.js', color: 'var(--e-babylon)' },
   'babylon-lite': { label: 'Babylon Lite', color: 'var(--e-babylon-lite)' },
+  pixi3d: { label: 'PixiJS 3D', color: 'var(--e-pixi3d)' },
   'three-classic': { label: 'three.js WebGLRenderer', color: 'var(--e-three-classic)' },
 };
-const MAIN_ORDER = ['three', 'playcanvas', 'babylon', 'babylon-lite'];
+const MAIN_ORDER = ['three', 'playcanvas', 'babylon', 'babylon-lite', 'pixi3d'];
 const MAIN = MAIN_ORDER.filter((e) => DATA.engines[e] || DATA.cells.some((c) => c.engine === e));
 document.querySelector('.engines').textContent = MAIN.map((e) => ENG[e].label).join(' · ');
 const supportsBackend = (e, backend) => e === 'babylon-lite' ? backend === 'webgpu' : e !== 'three-classic' || backend === 'webgl2';
@@ -291,7 +293,7 @@ const GROUPS = [
 ];
 const ABOUT = {
   s0: 'One lit PBR cube. Measures engine download, initialization and time to first frame rather than rendering.',
-  s1: 'Individually animated meshes built from 8 geometry types with one shared material. Every object is its own draw, so this is the scene-graph and command-submission cost that dominates most real scenes.',
+  s1: 'Individually animated meshes built from 8 geometry types with one shared material. The naive path uses separate scene nodes and retains native default batching; the optimized path uses explicit instance buffers. Inspect draw counters alongside scene-graph and submission costs.',
   s2: '5,000 meshes spread over up to 1,000 materials that differ only in parameters. Tests how cheaply each engine switches material state.',
   s3: 'One geometry drawn up to 500,000 times with every instance matrix rewritten each frame: the instancing path plus per-frame upload bandwidth.',
   s4: 'A 400-sphere PBR scene lit by 8–512 moving point lights. Naive is the default forward path, measured up to 32 lights; optimized is clustered lighting where the engine has it.',
@@ -828,16 +830,16 @@ function renderGallery() {
 // ---------- features ----------
 function renderFeatures() {
   const rows = [
-    ['Shader authoring', 'TSL node graphs, compiled to WGSL or GLSL', 'WGSL and GLSL shader chunks', 'WGSL and GLSL; Node Material Editor', 'WGSL shaders and material fragments'],
-    ['Compute', 'TSL compute (instancedArray, Fn().compute)', 'Compute + StorageBuffer, WGSL', 'ComputeShader + StorageBuffer, WGSL', 'Compute tasks + storage buffers, WGSL'],
-    ['Many lights', 'ClusteredLighting addon (point lights)', 'Clustered lighting on by default', 'ClusteredLightContainer (9.0)', 'createClusteredLightContainer()'],
-    ['Render bundles / replay', 'BundleGroup', 'No public API', 'Non-compatibility mode, snapshot rendering', 'Automatic render-bundle caching'],
-    ['Pipeline pre-warm', 'compileAsync()', 'None — pipelines build on first draw', 'createRenderPipelineAsync (9.1), whenReadyAsync', 'await registerScene()'],
-    ['WebGL2 fallback', 'Automatic in WebGPURenderer; classic WebGLRenderer', 'Automatic device fallback', 'Separate Engine class', 'None (WebGPU only)'],
-    ['Built-in GPU timing', 'trackTimestamp + resolveTimestampsAsync', 'device.gpuProfiler (span per frame)', 'Main pass only', 'Opt-in GPU timing'],
-    ['Tree-shaking', 'Named ESM imports', 'ESM, sideEffects: false', 'Deep imports or the pure barrel (9.8+)', 'Named ESM imports, lazy feature modules'],
-    ['Types', '@types/three (separate package)', 'Bundled .d.ts', 'Written in TypeScript', 'Bundled .d.ts'],
-    ['License', 'MIT', 'MIT', 'Apache 2.0', 'Apache 2.0'],
+    ['Shader authoring', 'TSL node graphs, compiled to WGSL or GLSL', 'WGSL and GLSL shader chunks', 'WGSL and GLSL; Node Material Editor', 'WGSL shaders and material fragments', 'ShaderBit fragments in WGSL and GLSL'],
+    ['Compute', 'TSL compute (instancedArray, Fn().compute)', 'Compute + StorageBuffer, WGSL', 'ComputeShader + StorageBuffer, WGSL', 'Compute tasks + storage buffers, WGSL', 'Native GPU culling; reference S9 adapter N/A'],
+    ['Many lights', 'ClusteredLighting addon (point lights)', 'Clustered lighting on by default', 'ClusteredLightContainer (9.0)', 'createClusteredLightContainer()', 'Native tiled lighting, up to 32 non-ambient lights per view'],
+    ['Render bundles / replay', 'BundleGroup', 'No public API', 'Non-compatibility mode, snapshot rendering', 'Automatic render-bundle caching', 'Automatic WebGPU render-bundle caching'],
+    ['Pipeline pre-warm', 'compileAsync()', 'None — pipelines build on first draw', 'createRenderPipelineAsync (9.1), whenReadyAsync', 'await registerScene()', 'Pipelines built on demand; harness warm-up'],
+    ['WebGL2 fallback', 'Automatic in WebGPURenderer; classic WebGLRenderer', 'Automatic device fallback', 'Separate Engine class', 'None (WebGPU only)', 'PixiJS fallback; adapter verifies the requested backend'],
+    ['Built-in GPU timing', 'trackTimestamp + resolveTimestampsAsync', 'device.gpuProfiler (span per frame)', 'Main pass only', 'Opt-in GPU timing', 'Common benchmark API probe used here'],
+    ['Tree-shaking', 'Named ESM imports', 'ESM, sideEffects: false', 'Deep imports or the pure barrel (9.8+)', 'Named ESM imports, lazy feature modules', 'Named ESM imports; lazy WebGPU/WebGL backends'],
+    ['Types', '@types/three (separate package)', 'Bundled .d.ts', 'Written in TypeScript', 'Bundled .d.ts', 'Bundled .d.ts'],
+    ['License', 'MIT', 'MIT', 'Apache 2.0', 'Apache 2.0', 'MIT'],
   ];
   const t = $('#features');
   t.replaceChildren(h('thead', {}, h('tr', {}, h('th', {}, ''), MAIN.map((e) => h('th', {}, h('span', { class: 'dotkey', style: `background:${ENG[e].color}` }), `${ENG[e].label} ${DATA.engines[e] ?? ''}`)))));
@@ -885,7 +887,7 @@ function renderRig() {
   if (DATA.comparison) {
     items.unshift(['Machine', DATA.comparison.machine]);
     document.querySelector('.lede').textContent = DATA.comparison.summary;
-    document.title = 'WebGPU · Four-engine comparison';
+    document.title = `WebGPU · ${DATA.comparison.engineCount ?? MAIN.length}-engine comparison`;
   }
   $('#rig').replaceChildren(...items.map(([k, v]) => h('span', {}, `${k} `, h('b', {}, v))));
   $('#kicker').textContent = `Benchmark report · ${new Date(DATA.generatedAt).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' })}`;

@@ -29,6 +29,7 @@ const ENGINES: Record<EngineId, () => Promise<{ createAdapter(): EngineAdapter }
   playcanvas: () => import('../engines/playcanvas/index'),
   babylon: () => import('../engines/babylon/index'),
   'babylon-lite': () => import('../engines/babylon-lite/index'),
+  pixi3d: () => import('../engines/pixi3d/index'),
 };
 
 const consoleErrors: string[] = [];

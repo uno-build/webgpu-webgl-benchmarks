@@ -1,4 +1,5 @@
-// Rebuild the separate, self-contained four-engine report from one completed fresh session.
+// Rebuild the separate, self-contained engine comparison from one completed fresh session.
+// The comparison is the main published report at docs/index.html.
 // Usage: node --import tsx scripts/report-four-engines.ts <session-folder>
 import { execFileSync } from 'node:child_process';
 import { copyFileSync, existsSync, readFileSync, writeFileSync, mkdtempSync, rmSync } from 'node:fs';
@@ -24,8 +25,10 @@ const env = JSON.parse(readFileSync(environmentPath, 'utf8'));
 
 execFileSync(process.execPath, ['--import', 'tsx', join(ROOT, 'scripts/report.ts'), '--sessions', session], { cwd: ROOT, stdio: 'inherit' });
 const data = JSON.parse(readFileSync(join(ROOT, 'report/out/data.json'), 'utf8'));
-const engines = ['three', 'playcanvas', 'babylon', 'babylon-lite'];
-const labels: Record<string, string> = { three: 'three.js', playcanvas: 'PlayCanvas', babylon: 'Babylon.js', 'babylon-lite': 'Babylon Lite' };
+const measuredEngines = new Set(queue.filter((q: any) => !q.tag).map((q: any) => new URL(q.url, 'http://localhost').searchParams.get('engine')));
+const engines = ['three', 'playcanvas', 'babylon', 'babylon-lite', 'pixi3d'].filter((e) => measuredEngines.has(e));
+if (engines.length < 2) throw new Error('Comparison needs measurements of at least two engines in the same session');
+const labels: Record<string, string> = { three: 'three.js', playcanvas: 'PlayCanvas', babylon: 'Babylon.js', 'babylon-lite': 'Babylon Lite', pixi3d: 'PixiJS 3D' };
 for (const e of engines) if (!data.engines[e]) throw new Error(`No measured version for ${e}`);
 data.cells = data.cells.filter((c: any) => engines.includes(c.engine));
 data.scenarios = data.scenarios.map((s: any) => {
@@ -51,16 +54,16 @@ const calibration = data.browsers[0].calibration?.intervalP50;
 const spread = data.browsers[0].canary?.spread;
 const rawFile = 'four-engines-runs.jsonl';
 data.comparison = {
-  session, machine: `${env.cpu} · ${env.memoryGiB} GB · macOS ${env.os}`, rawFile,
-  summary: `Fresh measurements of all four engines on one ${env.cpu}, using ${env.browser}, WebGPU, 1920×1080 and 4× MSAA. Representative loads across all scenarios, with three planned timing repetitions and a separate counters pass. This is a new session, independent of the original reference report.`,
+  session, engineCount: engines.length, machine: `${env.cpu} · ${env.memoryGiB} GB · macOS ${env.os}`, rawFile,
+  summary: `Fresh measurements of ${engines.length} engines (${engines.map((e) => labels[e]).join(', ')}) on one ${env.cpu}, using ${env.browser}, WebGPU, 1920×1080 and 4× MSAA. Representative loads across all scenarios, with three planned timing repetitions and a separate counters pass. Every engine was measured in this session; no older browser results are mixed in.`,
   method: [
-    { title: 'Source and coverage', body: `Session ${session}. ${data.cells.length} engine/scenario/path/load combinations: ${ok.length} valid, ${data.cells.filter((c: any) => c.status === 'na').length} N/A, ${data.cells.filter((c: any) => c.status === 'error').length} failed, ${data.cells.filter((c: any) => c.status === 'skipped').length} skipped. ${timing.length} valid timing runs and ${counters.length} valid counters runs. Valid combinations have ${minRepeats === maxRepeats ? minRepeats : `${minRepeats}–${maxRepeats}`} timing repeats. No September reference measurements or previous smoke tests are included.` },
+    { title: 'Source and coverage', body: `Session ${session}. ${data.cells.length} engine/scenario/path/load combinations: ${ok.length} valid, ${data.cells.filter((c: any) => c.status === 'na').length} N/A, ${data.cells.filter((c: any) => c.status === 'error').length} failed, ${data.cells.filter((c: any) => c.status === 'skipped').length} skipped. ${timing.length} valid timing runs and ${counters.length} valid counters runs. Valid combinations have ${minRepeats === maxRepeats ? minRepeats : `${minRepeats}–${maxRepeats}`} timing repeats. No historical measurements or previous smoke tests are included.` },
     { title: 'Machine and browser', body: `${env.cpu}, ${env.memoryGiB} GB RAM, macOS ${env.os}, ${env.power}. ${env.browser}. Browser user agent: ${records.find((r) => r.ua)?.ua}. Calibration interval p50: ${calibration?.toFixed(3)} ms. The browser is display-rate limited; interval and FPS are not uncapped throughput measurements. Compare engine CPU and GPU costs separately.` },
     { title: 'Protocol', body: 'Production build. Timing runs: at least 90 warm-up frames and 1.5 seconds, then at least 240 measured frames and 3 seconds, with a 15-second measurement cap. Three timing passes, engine order shuffled per workload, separate counters runs and periodic canaries. Shared deterministic input advances by 1/60 second per frame. Invalid GPU runs are excluded from aggregates. All raw attempts, including failures and early stops, are downloadable below.' },
     { title: 'Counters and images', body: 'Draw calls, uploads, submissions and live GPU allocation estimates come from the common API probe. Counters are collected in their own runs and are not included in timing medians. Gallery images are frame 60 of each measured scene/path. A blank gallery cell means no valid capture, not zero rendering cost.' },
     { title: 'Timing quality', body: `GPU timestamps use the browser's normal precision; differences below its timestamp granularity are not decisive. Valid timing runs have ${(minCoverage * 100).toFixed(1)}% minimum and ${(medCoverage * 100).toFixed(1)}% median GPU-sample coverage.${spread == null ? '' : ` Canary CPU spread is ±${(spread * 100).toFixed(1)}%.`} Engine CPU time excludes the shared simulation. Frame cost is max(CPU p95, GPU p95), an estimate excluding simulation and presentation; it is not measured end-to-end latency or a capacity prediction.` },
-    { title: 'Adapter coverage', body: 'Babylon Lite implements every registered WebGPU scene: meshes/materials, forward and clustered lights, CSM + spot shadows, HDR bloom + ACES, glTF, independent skinned characters, phased VAT and reference compute particles. Unsupported optimized paths in other engines remain N/A, and actual execution errors retain their error status. N/A is not a performance win or loss.' },
-    { title: 'Image equivalence', body: 'Engines consume the same geometry, materials, lights and camera inputs, but native shading may differ. In S5/S6, PlayCanvas uses a 2048-pixel atlas for four cascades (1024 per tile), while three.js and Babylon.js configure 2048 per cascade: their shadow GPU costs are not equal-resolution comparisons. Lite also uses 2048 per cascade, with native PCF filtering. Lite 1.36.0 has a build-time fix that composes its native CSM and PCF receiver fragments together. Lite forward lights do not have the glTF smooth range window, and native spotlights have no separate inner cone control: these lighting differences are recorded in run notes and limit pixel-equivalent GPU comparisons. Sponza advances the camera once per frame, so differing frame counts can cover different portions of the route.' },
+    { title: 'Adapter coverage', body: 'Babylon Lite implements every registered WebGPU scene. PixiJS 3D 0.1.0 implements scene nodes, bulk instances, native tiled lighting, glTF and independent skinned characters. Its naive path retains native automatic batching, so separate scene nodes do not imply one draw call each. PixiJS 3D has no untiled forward adapter path, phased baked-animation adapter or reference compute-particle adapter. S5/S6 require mixed shadow-map sizes, while PixiJS 3D configures one size per view. These combinations remain N/A; actual execution errors retain their error status. N/A is not a performance win or loss.' },
+    { title: 'Image equivalence', body: 'Engines consume the same geometry, materials, lights and camera inputs, but native shading may differ. In S5/S6, PlayCanvas uses a 2048-pixel atlas for four cascades (1024 per tile), while three.js and Babylon.js configure 2048 per cascade: their shadow GPU costs are not equal-resolution comparisons. Lite also uses 2048 per cascade, with native PCF filtering. Lite 1.36.0 has a build-time fix that composes its native CSM and PCF receiver fragments together. Lite forward lights do not have the glTF smooth range window, and native spotlights have no separate inner cone control: these lighting differences are recorded in run notes and limit pixel-equivalent GPU comparisons. PixiJS 3D uses the native canvas clear color outside the view tone curve, so clear-background brightness can differ; its procedural light intensities are scaled by π for Lambert normalization. Missing glTF normals are generated once on the shared source. Sponza advances the camera once per frame, so differing frame counts can cover different portions of the route.' },
     { title: 'Footprint and startup', body: 'Minimal app sizes were built from the pinned packages on this machine. Static imports and all reachable lazy chunks are both shown; some lazy code is required before the first frame. Startup is measured after priming each engine, from local serving, and uses the fastest valid repeat. It does not represent a cold internet download.' },
     { title: 'Scope', body: 'WebGPU only, one machine, one browser and representative loads. S1 includes 1,000 and 5,000 meshes; other scenarios use the load shown in their tables. No claims about untested levels, maximum object capacity, Firefox, Safari or WebGL2 follow from this report.' },
   ],
@@ -74,15 +77,15 @@ const compare = (scenario: string, variant: string, level: number, metric: 'cpu'
 }).filter((x) => typeof x.ms === 'number').sort((a, b) => a.ms - b.ms)
   .map((x) => `${labels[x.engine]} ${x.ms.toFixed(2)} ms`).join('; ');
 data.findings = [
-  { title: '5,000 separate animated meshes', body: `Engine CPU p50: ${compare('s1', 'naive', 5000, 'cpu')}. These are engine update/render costs, excluding the shared simulation.` },
-  { title: '5,000 meshes with native instancing', body: `Engine CPU p50: ${compare('s1', 'optimized', 5000, 'cpu')}. Compare with the separate-mesh path using the Path filter; all four render the same shared object data.` },
+  { title: '5,000 animated scene nodes', body: `Engine CPU p50: ${compare('s1', 'naive', 5000, 'cpu')}. These are engine update/render costs, excluding the shared simulation. Native default batching is retained; inspect draw counters alongside CPU cost.` },
+  { title: '5,000 meshes with native instancing', body: `Engine CPU p50: ${compare('s1', 'optimized', 5000, 'cpu')}. Compare with the scene-node path using the Path filter; all ${engines.length} engines consume the same shared object data.` },
   { title: '100,000 instances updated every frame', body: `Engine CPU p50: ${compare('s3', 'optimized', 100000, 'cpu')}. GPU p50: ${compare('s3', 'optimized', 100000, 'gpu')}. Upload and rendering costs can rank the engines differently.` },
-  { title: '32 moving lights with clustering', body: `GPU p50: ${compare('s4', 'optimized', 32, 'gpu')}. Switch to Optimized to inspect all four native clustered paths. Forward-path failures or N/A entries are reported separately.` },
+  { title: '32 moving lights with clustering', body: `GPU p50: ${compare('s4', 'optimized', 32, 'gpu')}. Switch to Optimized to inspect native clustered/tiled paths. Forward-path failures or N/A entries are reported separately.` },
   { title: 'Coverage matters', body: `${ok.length} of ${data.cells.length} measured combinations produced valid timing results. Lite now has implementations for every scene. Any N/A entries belong to unavailable paths in the other adapters; actual rendering errors are displayed separately. This report only ranks valid rendered paths.` },
 ];
 
 // Include every captured path at a representative measured load, so clustered lights and
-// instanced scenes have four-engine visual comparisons as well as numerical comparisons.
+// instanced scenes have visual comparisons as well as numerical comparisons.
 const thumbs = mkdtempSync(join(tmpdir(), 'wgb-four-engines-'));
 data.gallery = [];
 try {
@@ -104,7 +107,7 @@ for (const s of data.scenarios) for (const variant of s.variants) {
 }
 const template = readFileSync(join(ROOT, 'report/template.html'), 'utf8');
 const html = template.replace('/*__DATA__*/null', () => JSON.stringify(data).replace(/</g, '\\u003c'));
-const output = join(ROOT, 'docs', 'index-four-engines.html');
+const output = join(ROOT, 'docs', 'index.html');
 writeFileSync(output, `<!doctype html>\n<html lang="en">\n<meta charset="utf-8">\n<meta name="viewport" content="width=device-width, initial-scale=1">\n${html}\n</html>\n`);
 copyFileSync(join(dir, 'results.jsonl'), join(ROOT, 'docs', rawFile));
 writeFileSync(join(ROOT, 'docs', 'four-engines-session.json'), JSON.stringify({ ...meta, environment: env }, null, 2));

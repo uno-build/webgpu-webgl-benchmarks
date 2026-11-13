@@ -16,7 +16,7 @@ export interface ScenarioDef {
   maxLevel?: Partial<Record<Variant, number>>;
 }
 
-const MAIN: EngineId[] = ['three', 'playcanvas', 'babylon', 'babylon-lite'];
+const MAIN: EngineId[] = ['three', 'playcanvas', 'babylon', 'babylon-lite', 'pixi3d'];
 const WITH_CLASSIC: EngineId[] = [...MAIN, 'three-classic'];
 const BOTH: Backend[] = ['webgpu', 'webgl2'];
 

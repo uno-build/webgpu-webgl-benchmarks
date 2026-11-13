@@ -1,7 +1,7 @@
 {
   "name": "webgpu-webgl-benchmarks",
   "version": "1.0.0",
-  "description": "Reproducible WebGPU and WebGL2 benchmarks of three.js, PlayCanvas, Babylon.js and Babylon Lite across Chrome, Firefox and Safari",
+  "description": "Reproducible WebGPU and WebGL2 benchmarks of three.js, PlayCanvas, Babylon.js, Babylon Lite and PixiJS 3D across Chrome, Firefox and Safari",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
@@ -17,7 +17,9 @@
     "@babylonjs/lite": "1.36.0",
     "@babylonjs/loaders": "9.26.0",
     "playcanvas": "2.22.2",
-    "three": "0.186.0"
+    "three": "0.186.0",
+    "@pixi/3d": "0.1.0",
+    "pixi.js": "8.23.0"
   },
   "devDependencies": {
     "@types/node": "^26.5.1",

@@ -9,7 +9,7 @@ import { liteCompatibility } from '../server/lite-compat';
 
 const ROOT = join(import.meta.dirname, '..');
 const OUT = join(ROOT, 'dist-size');
-const ENGINES = ['three', 'playcanvas', 'babylon', 'babylon-lite', 'three-classic'];
+const ENGINES = ['three', 'playcanvas', 'babylon', 'babylon-lite', 'pixi3d', 'three-classic'];
 
 interface Size { raw: number; gzip: number; brotli: number; files: number }
 type Manifest = Record<string, { file: string; isEntry?: boolean; isDynamicEntry?: boolean; imports?: string[]; dynamicImports?: string[]; src?: string }>;

@@ -1,18 +1,18 @@
 {
-  "id": "2026-10-22T09-36-43-manual-full-p5187",
+  "id": "2026-11-13T10-10-27-manual-full-p5191",
   "browser": "manual",
   "profile": "full",
-  "only": "engine=three,playcanvas,babylon,babylon-lite;backend=webgpu",
+  "only": "engine=three,playcanvas,babylon,babylon-lite,pixi3d;backend=webgpu",
   "representative": true,
-  "cells": 64,
-  "runs": 273,
-  "startedAt": "2026-10-22T09:36:43.171Z",
+  "cells": 80,
+  "runs": 342,
+  "startedAt": "2026-11-13T10:10:27.082Z",
   "environment": {
     "cpu": "Apple M4 Pro",
     "memoryGiB": 24,
     "os": "26.6.2",
     "power": "AC power, battery fully charged at start",
-    "browser": "Chrome for Testing 153.0.8010.12, headless Playwright, Dawn/Metal, default Playwright launch flags, display-rate limited",
+    "browser": "ChatGPT in-app Chromium 157.0.0.0, Dawn/Metal, default browser configuration, display-rate limited",
     "resolution": [
       1920,
       1080
